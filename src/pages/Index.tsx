@@ -78,6 +78,19 @@ const Index = () => {
   const removeCustomFace = (id: string) => {
     const updated = customFaces.filter(f => f.id !== id);
     saveCustomFaces(updated);
+  };
+
+  const downloadImage = (imageUrl: string, filename: string) => {
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast({
+      title: "Скачано!",
+      description: "Изображение сохранено на устройство",
+    });
     if (selectedFace === id) {
       setSelectedFace(null);
     }
@@ -120,6 +133,14 @@ const Index = () => {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const deleteProcessedImage = (id: string) => {
+    setProcessedImages(processedImages.filter(img => img.id !== id));
+    toast({
+      title: "Удалено",
+      description: "Изображение удалено из галереи",
+    });
   };
 
   const processImage = async () => {
@@ -400,13 +421,18 @@ const Index = () => {
                         className="w-full aspect-square object-cover"
                       />
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        <Button size="icon" variant="secondary">
+                        <Button 
+                          size="icon" 
+                          variant="secondary"
+                          onClick={() => downloadImage(item.result, `faceswap-${item.id}.jpg`)}
+                        >
                           <Icon name="Download" size={20} />
                         </Button>
-                        <Button size="icon" variant="secondary">
-                          <Icon name="Share2" size={20} />
-                        </Button>
-                        <Button size="icon" variant="destructive">
+                        <Button 
+                          size="icon" 
+                          variant="destructive"
+                          onClick={() => deleteProcessedImage(item.id)}
+                        >
                           <Icon name="Trash2" size={20} />
                         </Button>
                       </div>
