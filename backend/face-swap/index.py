@@ -66,11 +66,10 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     
     try:
         output = replicate.run(
-            "yan-ops/face-swap",
+            "easel/advanced-face-swap",
             input={
                 "target_image": target_image,
-                "swap_image": swap_image,
-                "cache_days": 1
+                "swap_image": swap_image
             }
         )
         
