@@ -66,7 +66,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     
     try:
         output = replicate.run(
-            "yan-ops/face-swap:d5900f9ebed33e7ae6873dcc96edc340b123924d67ec389b75c119a3fda681c1",
+            "yan-ops/face-swap",
             input={
                 "target_image": target_image,
                 "swap_image": swap_image,
