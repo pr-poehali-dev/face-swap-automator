@@ -65,13 +65,33 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         target_cv = load_image(target_image)
         swap_cv = load_image(swap_image)
         
+        def detect_faces_dnn(image: np.ndarray):
+            h, w = image.shape[:2]
+            blob = cv2.dnn.blobFromImage(image, 1.0, (300, 300), [104, 117, 123], False, False)
+            
+            net = cv2.dnn.readNetFromCaffe(
+                cv2.data.haarcascades.replace('haarcascades', 'deploy.prototxt'),
+                cv2.data.haarcascades.replace('haarcascades', 'res10_300x300_ssd_iter_140000.caffemodel')
+            )
+            net.setInput(blob)
+            detections = net.forward()
+            
+            faces = []
+            for i in range(detections.shape[2]):
+                confidence = detections[0, 0, i, 2]
+                if confidence > 0.5:
+                    box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+                    x, y, x2, y2 = box.astype(int)
+                    faces.append((x, y, x2-x, y2-y))
+            return faces
+        
         face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
         
         target_gray = cv2.cvtColor(target_cv, cv2.COLOR_BGR2GRAY)
         swap_gray = cv2.cvtColor(swap_cv, cv2.COLOR_BGR2GRAY)
         
-        target_faces = face_cascade.detectMultiScale(target_gray, 1.1, 5)
-        swap_faces = face_cascade.detectMultiScale(swap_gray, 1.1, 5)
+        target_faces = face_cascade.detectMultiScale(target_gray, 1.05, 3, minSize=(30, 30))
+        swap_faces = face_cascade.detectMultiScale(swap_gray, 1.05, 3, minSize=(30, 30))
         
         if len(target_faces) == 0:
             return {
