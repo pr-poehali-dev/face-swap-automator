@@ -9,7 +9,7 @@ import numpy as np
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Business: Бесплатная AI замена лиц используя OpenCV и PIL
+    Business: Улучшенная AI замена лиц с seamless cloning
     Args: event - dict с httpMethod, body (base64 или URL изображения)
           context - object с request_id
     Returns: HTTP response с base64 результатом
@@ -70,8 +70,8 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         target_gray = cv2.cvtColor(target_cv, cv2.COLOR_BGR2GRAY)
         swap_gray = cv2.cvtColor(swap_cv, cv2.COLOR_BGR2GRAY)
         
-        target_faces = face_cascade.detectMultiScale(target_gray, 1.3, 5)
-        swap_faces = face_cascade.detectMultiScale(swap_gray, 1.3, 5)
+        target_faces = face_cascade.detectMultiScale(target_gray, 1.1, 5)
+        swap_faces = face_cascade.detectMultiScale(swap_gray, 1.1, 5)
         
         if len(target_faces) == 0:
             return {
@@ -92,17 +92,35 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         tx, ty, tw, th = target_faces[0]
         sx, sy, sw, sh = swap_faces[0]
         
-        swap_face = swap_cv[sy:sy+sh, sx:sx+sw]
-        swap_face_resized = cv2.resize(swap_face, (tw, th))
+        padding = int(tw * 0.15)
+        tx_pad = max(0, tx - padding)
+        ty_pad = max(0, ty - padding)
+        tw_pad = min(target_cv.shape[1] - tx_pad, tw + 2*padding)
+        th_pad = min(target_cv.shape[0] - ty_pad, th + 2*padding)
+        
+        sx_pad = max(0, sx - padding)
+        sy_pad = max(0, sy - padding)
+        sw_pad = min(swap_cv.shape[1] - sx_pad, sw + 2*padding)
+        sh_pad = min(swap_cv.shape[0] - sy_pad, sh + 2*padding)
+        
+        swap_face = swap_cv[sy_pad:sy_pad+sh_pad, sx_pad:sx_pad+sw_pad]
+        swap_face_resized = cv2.resize(swap_face, (tw_pad, th_pad))
         
         result = target_cv.copy()
-        result[ty:ty+th, tx:tx+tw] = swap_face_resized
+        
+        mask = 255 * np.ones(swap_face_resized.shape, swap_face_resized.dtype)
+        center = (tx_pad + tw_pad // 2, ty_pad + th_pad // 2)
+        
+        try:
+            result = cv2.seamlessClone(swap_face_resized, result, mask, center, cv2.NORMAL_CLONE)
+        except:
+            result[ty_pad:ty_pad+th_pad, tx_pad:tx_pad+tw_pad] = swap_face_resized
         
         result_rgb = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
         result_pil = Image.fromarray(result_rgb)
         
         buffered = io.BytesIO()
-        result_pil.save(buffered, format="JPEG", quality=90)
+        result_pil.save(buffered, format="JPEG", quality=95)
         result_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
         result_data_url = f"data:image/jpeg;base64,{result_base64}"
         
