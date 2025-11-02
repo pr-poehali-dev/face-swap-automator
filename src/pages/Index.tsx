@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,7 @@ interface FaceLibraryItem {
   id: string;
   name: string;
   image: string;
+  isCustom?: boolean;
 }
 
 interface ProcessedImage {
@@ -19,21 +20,72 @@ interface ProcessedImage {
   timestamp: Date;
 }
 
+const STORAGE_KEY = 'faceswap_custom_faces';
+
+const defaultFaces: FaceLibraryItem[] = [
+  { id: '1', name: 'Модель A', image: 'https://cdn.poehali.dev/projects/9c069475-6d35-4bc8-9044-5dab414c59d0/files/a1de085b-d244-4b83-9641-de744a883dda.jpg' },
+  { id: '2', name: 'Модель B', image: 'https://cdn.poehali.dev/projects/9c069475-6d35-4bc8-9044-5dab414c59d0/files/81395471-00d9-42b1-8ec0-0a6d757d8eb7.jpg' },
+  { id: '3', name: 'Модель C', image: 'https://cdn.poehali.dev/projects/9c069475-6d35-4bc8-9044-5dab414c59d0/files/764d51ae-9c5a-479e-b381-b2d76f70d621.jpg' },
+];
+
 const Index = () => {
   const { toast } = useToast();
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [selectedFace, setSelectedFace] = useState<string | null>(null);
   const [processedImages, setProcessedImages] = useState<ProcessedImage[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [customFaces, setCustomFaces] = useState<FaceLibraryItem[]>([]);
+  const [faceLibrary, setFaceLibrary] = useState<FaceLibraryItem[]>(defaultFaces);
 
-  const faceLibrary: FaceLibraryItem[] = [
-    { id: '1', name: 'Модель A', image: 'https://cdn.poehali.dev/projects/9c069475-6d35-4bc8-9044-5dab414c59d0/files/a1de085b-d244-4b83-9641-de744a883dda.jpg' },
-    { id: '2', name: 'Модель B', image: 'https://cdn.poehali.dev/projects/9c069475-6d35-4bc8-9044-5dab414c59d0/files/81395471-00d9-42b1-8ec0-0a6d757d8eb7.jpg' },
-    { id: '3', name: 'Модель C', image: 'https://cdn.poehali.dev/projects/9c069475-6d35-4bc8-9044-5dab414c59d0/files/764d51ae-9c5a-479e-b381-b2d76f70d621.jpg' },
-    { id: '4', name: 'Модель D', image: '/placeholder.svg' },
-    { id: '5', name: 'Модель E', image: '/placeholder.svg' },
-    { id: '6', name: 'Модель F', image: '/placeholder.svg' },
-  ];
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        setCustomFaces(parsed);
+        setFaceLibrary([...defaultFaces, ...parsed]);
+      } catch (e) {
+        console.error('Failed to load custom faces', e);
+      }
+    }
+  }, []);
+
+  const saveCustomFaces = (faces: FaceLibraryItem[]) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(faces));
+    setCustomFaces(faces);
+    setFaceLibrary([...defaultFaces, ...faces]);
+  };
+
+  const addCustomFace = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const newFace: FaceLibraryItem = {
+        id: `custom-${Date.now()}`,
+        name: file.name.replace(/\.[^/.]+$/, ''),
+        image: reader.result as string,
+        isCustom: true,
+      };
+      const updated = [...customFaces, newFace];
+      saveCustomFaces(updated);
+      toast({
+        title: "Лицо добавлено!",
+        description: "Теперь можно использовать его для замены",
+      });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeCustomFace = (id: string) => {
+    const updated = customFaces.filter(f => f.id !== id);
+    saveCustomFaces(updated);
+    if (selectedFace === id) {
+      setSelectedFace(null);
+    }
+    toast({
+      title: "Лицо удалено",
+      description: "Удалено из библиотеки",
+    });
+  };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -205,27 +257,63 @@ const Index = () => {
               </Card>
 
               <Card className="glass p-8">
-                <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
-                  <Icon name="Users" size={24} />
-                  Библиотека лиц
-                </h2>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-2xl font-bold flex items-center gap-2">
+                    <Icon name="Users" size={24} />
+                    Библиотека лиц
+                  </h2>
+                  <div className="relative">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) addCustomFace(file);
+                      }}
+                      className="hidden"
+                      id="add-face"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => document.getElementById('add-face')?.click()}
+                      className="glass"
+                    >
+                      <Icon name="Plus" size={16} className="mr-2" />
+                      Добавить
+                    </Button>
+                  </div>
+                </div>
                 
                 <div className="grid grid-cols-3 gap-4 mb-6 max-h-96 overflow-y-auto pr-2">
                   {faceLibrary.map((face) => (
                     <div
                       key={face.id}
-                      onClick={() => setSelectedFace(face.id)}
-                      className={`cursor-pointer rounded-xl overflow-hidden transition-all hover:scale-105 ${
+                      className={`cursor-pointer rounded-xl overflow-hidden transition-all hover:scale-105 relative group ${
                         selectedFace === face.id
                           ? 'ring-4 ring-primary shadow-xl'
                           : 'ring-1 ring-border'
                       }`}
+                      onClick={() => setSelectedFace(face.id)}
                     >
                       <img
                         src={face.image}
                         alt={face.name}
                         className="w-full aspect-square object-cover"
                       />
+                      {face.isCustom && (
+                        <Button
+                          size="icon"
+                          variant="destructive"
+                          className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeCustomFace(face.id);
+                          }}
+                        >
+                          <Icon name="X" size={14} />
+                        </Button>
+                      )}
                       <div className="p-2 bg-card/80 backdrop-blur">
                         <p className="text-xs font-medium text-center truncate">
                           {face.name}
