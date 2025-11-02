@@ -1,0 +1,24 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS request for CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedHeaders": {
+        "Access-Control-Allow-Origin": "*"
+      }
+    },
+    {
+      "name": "POST without API token should return error",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "target_image": "data:image/png;base64,test",
+        "swap_image": "data:image/png;base64,test"
+      },
+      "expectedStatus": 500,
+      "bodyMatcher": "partial"
+    }
+  ]
+}

@@ -27,9 +27,9 @@ const Index = () => {
   const [isProcessing, setIsProcessing] = useState(false);
 
   const faceLibrary: FaceLibraryItem[] = [
-    { id: '1', name: 'Модель A', image: '/placeholder.svg' },
-    { id: '2', name: 'Модель B', image: '/placeholder.svg' },
-    { id: '3', name: 'Модель C', image: '/placeholder.svg' },
+    { id: '1', name: 'Модель A', image: 'https://cdn.poehali.dev/projects/9c069475-6d35-4bc8-9044-5dab414c59d0/files/a1de085b-d244-4b83-9641-de744a883dda.jpg' },
+    { id: '2', name: 'Модель B', image: 'https://cdn.poehali.dev/projects/9c069475-6d35-4bc8-9044-5dab414c59d0/files/81395471-00d9-42b1-8ec0-0a6d757d8eb7.jpg' },
+    { id: '3', name: 'Модель C', image: 'https://cdn.poehali.dev/projects/9c069475-6d35-4bc8-9044-5dab414c59d0/files/764d51ae-9c5a-479e-b381-b2d76f70d621.jpg' },
     { id: '4', name: 'Модель D', image: '/placeholder.svg' },
     { id: '5', name: 'Модель E', image: '/placeholder.svg' },
     { id: '6', name: 'Модель F', image: '/placeholder.svg' },
@@ -70,24 +70,53 @@ const Index = () => {
     }
   };
 
-  const processImage = () => {
+  const processImage = async () => {
     if (!uploadedImage || !selectedFace) return;
 
+    const selectedFaceData = faceLibrary.find(f => f.id === selectedFace);
+    if (!selectedFaceData) return;
+
     setIsProcessing(true);
-    setTimeout(() => {
+
+    try {
+      const response = await fetch('https://functions.poehali.dev/990d6fe8-4c04-490d-b68b-6c4b0655e9fd', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          target_image: uploadedImage,
+          swap_image: selectedFaceData.image,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Ошибка обработки');
+      }
+
       const newProcessed: ProcessedImage = {
         id: Date.now().toString(),
         original: uploadedImage,
-        result: uploadedImage,
+        result: data.result_url,
         timestamp: new Date(),
       };
+      
       setProcessedImages([newProcessed, ...processedImages]);
-      setIsProcessing(false);
       toast({
         title: "✨ Готово!",
         description: "Лицо успешно заменено",
       });
-    }, 2000);
+    } catch (error) {
+      toast({
+        title: "Ошибка",
+        description: error instanceof Error ? error.message : 'Не удалось обработать изображение',
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
