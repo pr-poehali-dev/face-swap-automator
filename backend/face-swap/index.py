@@ -1,14 +1,18 @@
 import json
-import os
 import base64
+import io
+import requests
 from typing import Dict, Any
+from PIL import Image
+import cv2
+import numpy as np
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     '''
-    Business: AI замена лиц на фотографиях через Replicate API
-    Args: event - dict с httpMethod, body (base64 изображения)
+    Business: Бесплатная AI замена лиц используя OpenCV и PIL
+    Args: event - dict с httpMethod, body (base64 или URL изображения)
           context - object с request_id
-    Returns: HTTP response с результатом обработки
+    Returns: HTTP response с base64 результатом
     '''
     method: str = event.get('httpMethod', 'GET')
     
@@ -33,25 +37,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'isBase64Encoded': False
         }
     
-    api_token = os.environ.get('REPLICATE_API_TOKEN')
-    if not api_token:
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps({'error': 'REPLICATE_API_TOKEN not configured'}),
-            'isBase64Encoded': False
-        }
-    
-    try:
-        import replicate
-    except ImportError:
-        return {
-            'statusCode': 500,
-            'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps({'error': 'Replicate library not installed'}),
-            'isBase64Encoded': False
-        }
-    
     body_data = json.loads(event.get('body', '{}'))
     target_image = body_data.get('target_image')
     swap_image = body_data.get('swap_image')
@@ -65,30 +50,68 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
     
     try:
-        output = replicate.run(
-            "easel/advanced-face-swap",
-            input={
-                "target_image": target_image,
-                "swap_image": swap_image
-            }
-        )
+        def load_image(img_data: str) -> np.ndarray:
+            if img_data.startswith('http'):
+                response = requests.get(img_data, timeout=10)
+                img = Image.open(io.BytesIO(response.content))
+            elif img_data.startswith('data:image'):
+                img_data = img_data.split(',')[1]
+                img = Image.open(io.BytesIO(base64.b64decode(img_data)))
+            else:
+                img = Image.open(io.BytesIO(base64.b64decode(img_data)))
+            
+            return cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
         
-        result_url = output if isinstance(output, str) else output[0] if isinstance(output, list) else None
+        target_cv = load_image(target_image)
+        swap_cv = load_image(swap_image)
         
-        if not result_url:
+        face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        
+        target_gray = cv2.cvtColor(target_cv, cv2.COLOR_BGR2GRAY)
+        swap_gray = cv2.cvtColor(swap_cv, cv2.COLOR_BGR2GRAY)
+        
+        target_faces = face_cascade.detectMultiScale(target_gray, 1.3, 5)
+        swap_faces = face_cascade.detectMultiScale(swap_gray, 1.3, 5)
+        
+        if len(target_faces) == 0:
             return {
-                'statusCode': 500,
+                'statusCode': 400,
                 'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-                'body': json.dumps({'error': 'No output from model'}),
+                'body': json.dumps({'error': 'No face detected in target image'}),
                 'isBase64Encoded': False
             }
+        
+        if len(swap_faces) == 0:
+            return {
+                'statusCode': 400,
+                'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'error': 'No face detected in swap image'}),
+                'isBase64Encoded': False
+            }
+        
+        tx, ty, tw, th = target_faces[0]
+        sx, sy, sw, sh = swap_faces[0]
+        
+        swap_face = swap_cv[sy:sy+sh, sx:sx+sw]
+        swap_face_resized = cv2.resize(swap_face, (tw, th))
+        
+        result = target_cv.copy()
+        result[ty:ty+th, tx:tx+tw] = swap_face_resized
+        
+        result_rgb = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
+        result_pil = Image.fromarray(result_rgb)
+        
+        buffered = io.BytesIO()
+        result_pil.save(buffered, format="JPEG", quality=90)
+        result_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        result_data_url = f"data:image/jpeg;base64,{result_base64}"
         
         return {
             'statusCode': 200,
             'headers': {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
             'body': json.dumps({
                 'success': True,
-                'result_url': result_url,
+                'result_url': result_data_url,
                 'request_id': context.request_id
             }),
             'isBase64Encoded': False
